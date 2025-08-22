@@ -6,39 +6,42 @@ const ytSearch = require("yt-search");
 const app = express();
 app.use(cors());
 
-// Search YouTube
+// Search YouTube videos
 app.get("/api/search", async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ error: "Missing search query" });
 
   try {
-    const results = await ytSearch(query);
-    const videos = results.videos.slice(0, 5).map(video => ({
-      title: video.title,
-      uploader: video.author.name,
-      thumbnail: video.thumbnail,
-      url: video.url,
+    const r = await ytSearch(query);
+    const videos = r.videos.slice(0, 10); // Limit to 10 results
+    const results = videos.map(v => ({
+      title: v.title,
+      uploader: v.author.name,
+      thumbnail: v.thumbnail,
+      url: v.url
     }));
-    res.json(videos);
+    res.json(results);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to search YouTube" });
+    res.status(500).json({ error: "Search failed" });
   }
 });
 
-// Get audio URL
+// Get audio URL for a video
 app.get("/api/get-audio", async (req, res) => {
   const url = req.query.url;
-  if (!url) return res.status(400).json({ error: "Missing YouTube URL" });
+  if (!url) return res.status(400).json({ error: "Missing video URL" });
 
   try {
     const info = await ytdl.getInfo(url);
-    const audioFormat = ytdl.chooseFormat(info.formats, { quality: "highestaudio", filter: "audioonly" });
+    const audioFormat = ytdl.chooseFormat(info.formats, { quality: "highestaudio" });
+    if (!audioFormat?.url) return res.json({ error: "No audio found" });
+
     res.json({
       title: info.videoDetails.title,
       uploader: info.videoDetails.author.name,
       thumbnail: info.videoDetails.thumbnails.pop().url,
-      audioUrl: audioFormat.url,
+      audioUrl: audioFormat.url
     });
   } catch (err) {
     console.error(err);
@@ -46,5 +49,4 @@ app.get("/api/get-audio", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(5000, () => console.log("Backend running on http://localhost:5000"));
