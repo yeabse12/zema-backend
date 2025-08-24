@@ -1,16 +1,10 @@
 const express = require("express");
 const cors = require("cors");
-const { Innertube } = require("youtubei.js");
+const ytdl = require("ytdl-core");
+const ytSearch = require("yt-search");
 
 const app = express();
 app.use(cors());
-
-let yt;
-
-// 🔹 Init YouTube client once
-(async () => {
-  yt = await Innertube.create();
-})();
 
 // ===== 1️⃣ Search YouTube videos =====
 app.get("/api/search", async (req, res) => {
@@ -18,13 +12,13 @@ app.get("/api/search", async (req, res) => {
   if (!query) return res.status(400).json({ error: "Missing search query" });
 
   try {
-    const search = await yt.search(query, { type: "video" });
-    const results = search.videos.slice(0, 10).map((v) => ({
+    const r = await ytSearch(query);
+    const results = r.videos.slice(0, 10).map((v) => ({
       title: v.title,
-      uploader: v.author?.name,
-      thumbnail: v.thumbnails?.[0]?.url,
-      url: `https://www.youtube.com/watch?v=${v.id}`,
-      duration: v.duration,
+      uploader: v.author.name,
+      thumbnail: v.thumbnail,
+      url: v.url,
+      duration: v.timestamp,
     }));
     res.json(results);
   } catch (err) {
@@ -39,21 +33,23 @@ app.get("/api/get-audio", async (req, res) => {
   if (!url) return res.status(400).json({ error: "Missing video URL" });
 
   try {
-    const videoId = new URL(url).searchParams.get("v");
-    const info = await yt.getInfo(videoId);
+    if (!ytdl.validateURL(url)) {
+      return res.status(400).json({ error: "Invalid YouTube URL" });
+    }
 
-    // pick best audio format
-    const audio = info.streaming_data?.adaptive_formats.find(
-      (f) => f.mime_type.includes("audio/")
-    );
+    const info = await ytdl.getInfo(url);
+    const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
 
-    if (!audio) return res.status(404).json({ error: "No audio found" });
+    if (!audioFormats.length) {
+      return res.status(404).json({ error: "No audio format found" });
+    }
 
+    // Pick first/best audio format
     res.json({
-      title: info.basic_info.title,
-      uploader: info.basic_info.author,
-      thumbnail: info.basic_info.thumbnail?.[0]?.url,
-      audioUrl: audio.url,
+      title: info.videoDetails.title,
+      uploader: info.videoDetails.author.name,
+      thumbnail: info.videoDetails.thumbnails.pop().url,
+      audioUrl: audioFormats[0].url,
     });
   } catch (err) {
     console.error("Audio error:", err);
